@@ -1,38 +1,44 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+import           Data.List (isSuffixOf)
+import           System.Environment (getArgs)
 import           System.Process
-import qualified Text.Parsec as P
+import qualified System.IO as IO
+
 import           Prelude.Compat
 
-type Parser = P.Parsec String ()
+chomp :: String -> String
+chomp str
+    | "\n" `isSuffixOf` str = init str
+    | otherwise = str
 
-nulTerminatedStr :: Parser String
-nulTerminatedStr = P.many (P.satisfy (/= toEnum 0)) <* P.char (toEnum 0)
+git :: [String] -> IO String
+git args = readProcess "git" args ""
 
-porcelainEntry :: Parser [FilePath]
-porcelainEntry =
+tryGit :: [String] -> IO (Either Int String)
+tryGit args =
     do
-        indexChar <- P.anyChar
-        _workingTreeChar <- P.anyChar
-        _ <- P.char ' '
-        case indexChar of
-            'R' ->
+        (exitCode, stdout, stderr) <- readProcessWithExitCode "git" args ""
+        IO.hPutStr IO.stderr stderr
+        case exitCode of
+            ExitFailure i ->
                 do
-                    destFilePath <- nulTerminatedStr
-                    srcFilePath <- nulTerminatedStr
-                    return [destFilePath, srcFilePath]
-            _ -> (:[]) <$> nulTerminatedStr
-
-porcelain :: Parser [FilePath]
-porcelain = concat <$> P.many porcelainEntry
-
-getUnclean :: IO [FilePath]
-getUnclean =
-    do
-        stdout <- readProcess "git" ["status", "--porcelain", "-z"] ""
-        return $ either (fail . show) id $ P.runParser porcelain () "" stdout
+                    putStr stdout
+                    return $ Left i
+            ExitSuccess -> return $ Right stdout
 
 main :: IO ()
 main =
     do
-        uncleanPaths <- getUnclean
-        print uncleanPaths
+        [destRef] <- getArgs
+        origPos <- chomp <$> git ["rev-parse", "HEAD"]
+        _ <- git ["stash", "-u"]
+        _ <- git ["diff", "--quiet"] -- sanity check that there's no diff
+        _ <- git ["reset", "--hard", destRef]
+        res <- tryGit ["stash", "pop"]
+        case res of
+            Left _errCode ->
+                do
+                    putStrLn $ "Cannot apply working tree changes (via stash), returning to: " ++ show origPos
+                    git ["reset", "--hard", origPos]
+                    git ["stash", "pop"]
+            Right -> return ()
