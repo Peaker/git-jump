@@ -1,8 +1,9 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+import           Control.Exception (onException)
+import           Control.Monad (void)
 import           Data.List (isSuffixOf)
-import           System.Environment (getArgs)
+import           System.Environment (getArgs, getProgName)
 import           System.Process
-import qualified System.IO as IO
 
 import           Prelude.Compat
 
@@ -11,34 +12,48 @@ chomp str
     | "\n" `isSuffixOf` str = init str
     | otherwise = str
 
-git :: [String] -> IO String
-git args = readProcess "git" args ""
+git :: String -> [String] -> IO String
+git cmd args = readProcess "git" (cmd:args) ""
 
-tryGit :: [String] -> IO (Either Int String)
-tryGit args =
-    do
-        (exitCode, stdout, stderr) <- readProcessWithExitCode "git" args ""
-        IO.hPutStr IO.stderr stderr
-        case exitCode of
-            ExitFailure i ->
-                do
-                    putStr stdout
-                    return $ Left i
-            ExitSuccess -> return $ Right stdout
+git_ :: String -> [String] -> IO ()
+git_ cmd = void . git cmd
+
+revParse :: [String] -> IO String
+revParse args = chomp <$> git "rev-parse" args
+
+reset :: [String] -> IO ()
+reset = git_ "reset"
+
+logErrors :: IO a -> String -> IO a
+logErrors action msg = action `onException` putStrLn msg
 
 main :: IO ()
 main =
     do
-        [destRef] <- getArgs
-        origPos <- chomp <$> git ["rev-parse", "HEAD"]
-        _ <- git ["stash", "-u"]
-        _ <- git ["diff", "--quiet"] -- sanity check that there's no diff
-        _ <- git ["reset", "--hard", destRef]
-        res <- tryGit ["stash", "pop"]
-        case res of
-            Left _errCode ->
+        progName <- getProgName
+        args <- getArgs
+        destRef <-
+            case args of
+            [] -> revParse ["--symbolic-full-name", "@{u}"]
+            [refSpec] -> return refSpec
+            _ -> fail $ "Usage: " ++ progName ++ "[refspec]\n    if refspec is not provided, the remote tracked branch is used"
+        origPos <- revParse ["HEAD"]
+        git_ "commit" ["--allow-empty", "-mSTAGING"]
+        staging <- revParse ["HEAD"]
+        git_ "commit" ["--allow-empty", "-amUNSTAGED"]
+        unstaged <- revParse ["HEAD"]
+        let restore =
                 do
-                    putStrLn $ "Cannot apply working tree changes (via stash), returning to: " ++ show origPos
-                    git ["reset", "--hard", origPos]
-                    git ["stash", "pop"]
-            Right -> return ()
+                    reset ["--hard", unstaged]
+                    reset ["--mixed", staging]
+                    reset ["--soft", origPos]
+                    return ()
+        (`onException` restore) $
+            do
+                reset ["--hard", destRef]
+                    `logErrors` ("Failed to move to " ++ show destRef)
+                git_ "cherry-pick" ["--allow-empty", staging]
+                git_ "cherry-pick" ["--allow-empty", unstaged]
+                reset ["--mixed", "HEAD^"]
+                reset ["--soft", "HEAD^"]
+                return ()
