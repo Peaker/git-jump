@@ -2,3 +2,4 @@
 *.o
 *.i_hi
 *.i_o
+/dist
