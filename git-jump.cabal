@@ -13,12 +13,15 @@ homepage:            https://github.com/Peaker/git-jump
 license:             BSD3
 license-file:        LICENSE
 author:              Eyal Lotem
+copyright:           Eyal Lotem
 maintainer:          eyal.lotem@gmail.com
--- copyright:
 category:            Development
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+source-repository head
+  type: git
+  location: https://github.com/Peaker/git-jump
 
 executable git-jump
   main-is:             git-jump.hs
