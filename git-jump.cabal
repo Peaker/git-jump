@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                git-jump
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            Move a git branch
 description:         Move a git branch to a specified refspec (or to the upstream position)
                      Along with any uncommited changes.
