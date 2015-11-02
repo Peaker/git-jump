@@ -51,7 +51,7 @@ main =
         (`onException` restore) $
             do
                 reset ["--hard", destRef]
-                    `logErrors` ("Failed to move to " ++ show destRef)
+                    `logErrors` ("Failed to jump to " ++ show destRef)
                 git_ "cherry-pick" ["--allow-empty", staging]
                 git_ "cherry-pick" ["--allow-empty", unstaged]
                 reset ["--mixed", "HEAD^"]
