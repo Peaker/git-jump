@@ -32,11 +32,12 @@ main =
     do
         progName <- getProgName
         args <- getArgs
-        destRef <-
-            case args of
-            [] -> revParse ["--symbolic-full-name", "@{u}"]
-            [refSpec] -> return refSpec
-            _ -> fail $ "Usage: " ++ progName ++ "[refspec]\n    if refspec is not provided, the remote tracked branch is used"
+        let destRefSpec =
+                case args of
+                [] -> "@{u}"
+                [refSpec] -> refSpec
+                _ -> fail $ "Usage: " ++ progName ++ "[refspec]\n    if refspec is not provided, the remote tracked branch is used"
+        destRef <- revParse [destRefSpec]
         origPos <- revParse ["HEAD"]
         git_ "commit" ["--allow-empty", "-mSTAGING"]
         staging <- revParse ["HEAD"]
